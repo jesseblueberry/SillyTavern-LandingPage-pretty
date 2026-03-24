@@ -294,6 +294,91 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
   height: 100%;
   z-index: 2000;
 }
+
+.stlp--container .stlp--wrapper .stlp--categoryTabs {
+  position: absolute;
+  top: 0.75em;
+  left: 0.75em;
+  display: flex;
+  gap: 0.75em;
+  z-index: 3;
+}
+.stlp--container .stlp--wrapper .stlp--categoryTabs > .stlp--categoryTab {
+  border: 0;
+  border-radius: 0.75em;
+  background: rgb(0 0 0 / 75%);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.55em 1.5em;
+  cursor: pointer;
+  transition: background-color 200ms;
+}
+.stlp--container .stlp--wrapper .stlp--categoryTabs > .stlp--categoryTab:hover {
+  background: rgb(0 0 0 / 90%);
+}
+.stlp--container .stlp--wrapper .stlp--categoryTabs > .stlp--categoryTab.stlp--active {
+  background: #51a0de;
+}
+.stlp--container .stlp--wrapper .stlp--searchWrap {
+  position: absolute;
+  left: 0.75em;
+  top: 4.2em;
+  z-index: 3;
+}
+.stlp--container .stlp--wrapper .stlp--searchWrap > .stlp--searchInput {
+  min-width: min(420px, 70vw);
+}
+.stlp--container .stlp--wrapper .stlp--cardsLoadingIndicator {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.75em;
+  z-index: 4;
+  pointer-events: none;
+}
+.stlp--container.stlp--cardsLoading .stlp--wrapper .stlp--cardsLoadingIndicator {
+  display: flex;
+}
+.stlp--container .stlp--wrapper .stlp--cardsLoadingText {
+  font-weight: 700;
+  text-shadow: 0 0 0.4em rgb(0 0 0 / 75%);
+}
+.stlp--container .stlp--wrapper .stlp--cardsLoadingDeck {
+  width: 54px;
+  height: 70px;
+  position: relative;
+}
+.stlp--container .stlp--wrapper .stlp--cardsLoadingDeck::before,
+.stlp--container .stlp--wrapper .stlp--cardsLoadingDeck::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.45em;
+  border: 2px solid rgb(255 255 255 / 70%);
+  background: rgb(81 160 222 / 28%);
+  animation: stlp--deckShuffle 900ms infinite ease-in-out;
+}
+.stlp--container .stlp--wrapper .stlp--cardsLoadingDeck::after {
+  animation-delay: 450ms;
+}
+@keyframes stlp--deckShuffle {
+  0% {
+    transform: translate(-8px, 5px) rotate(-7deg);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translate(8px, -5px) rotate(7deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-8px, 5px) rotate(-7deg);
+    opacity: 0.4;
+  }
+}
 .stlp--container .stlp--wrapper .stlp--cards {
   position: absolute;
   bottom: 0;

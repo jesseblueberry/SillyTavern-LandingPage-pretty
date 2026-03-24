@@ -9,6 +9,9 @@ import { waitForFrame } from './wait.js';
 
 export class LandingPage {
     /**@type {Card[]}*/ cards = [];
+    /**@type {Object.<string, Card[]>}*/ cardsByCategory = { favorites:[], recents:[], search:[] };
+    /**@type {'favorites'|'recents'|'search'}*/ activeCategory = 'favorites';
+    /**@type {string}*/ searchQuery = '';
 
     /**@type {Object}*/ settings;
 
@@ -59,6 +62,7 @@ export class LandingPage {
             lastChat: { character:null, group:null },
             hideTopBar: true,
             bgList: [],
+            activeCategory: 'favorites',
         }, extension_settings.landingPage ?? {});
         extension_settings.landingPage = this.settings;
         if (this.settings.hideTopBar) {
@@ -77,36 +81,71 @@ export class LandingPage {
 
         this.sheld = document.querySelector('#sheld');
         this.chatInput = document.querySelector('#send_textarea');
+        if (this.settings.activeCategory === 'new') {
+            this.settings.activeCategory = 'search';
+        }
+        if (!['favorites', 'recents', 'search'].includes(this.settings.activeCategory)) {
+            this.settings.activeCategory = 'favorites';
+        }
+        this.activeCategory = this.settings.activeCategory;
     }
 
 
     async load() {
         log('LandingPage.load');
-        // this.isStartingVideo = false;
+        const toSearchText = (value)=>{
+            if (value === null || value === undefined) return '';
+            if (Array.isArray(value)) return value.map(it=>toSearchText(it)).join(' ');
+            if (typeof value === 'object') return toSearchText(Object.values(value));
+            return `${value}`;
+        };
+        const compRecent = (a,b)=>{
+            if (this.settings.showFavorites) {
+                if (a.char.fav && !b.char.fav) return -1;
+                if (!a.char.fav && b.char.fav) return 1;
+            }
+            return (b.char.date_last_chat ?? 0) - (a.char.date_last_chat ?? 0);
+        };
         if (this.settings.numCards > 0) {
-            const compCards = (a,b)=>{
-                if (this.settings.showFavorites) {
-                    if (a.fav && !b.fav) return -1;
-                    if (!a.fav && b.fav) return 1;
-                }
-                return b.date_last_chat - a.date_last_chat;
-            };
-            const cards = await Promise.all(
-                [...characters, ...groups]
-                    .filter(it=>!this.settings.onlyFavorites || it.fav)
-                    .toSorted(compCards)
-                    .slice(0, this.settings.numCards)
-                    .map(it=>{
-                        const card = new Card(it);
+            const entries = [...characters, ...groups]
+                .filter(it=>!this.settings.onlyFavorites || it.fav)
+                .map(char=>({
+                    char,
+                    card: (()=>{
+                        const card = new Card(char);
                         card.onOpenChat = ()=>{
                             this.dom.classList.add('stlp--busy');
                         };
-                        return card.load();
-                    }),
-            );
-            this.cards = cards;
+                        card.searchText = [
+                            char.name,
+                            toSearchText(char.tags),
+                            toSearchText(char.tag),
+                            toSearchText(char.data?.tags),
+                            toSearchText(char.data?.extensions?.tags),
+                            toSearchText(char.description),
+                            toSearchText(char.scenario),
+                            toSearchText(char.personality),
+                            toSearchText(char.first_mes),
+                        ]
+                            .join(' ')
+                            .toLowerCase();
+                        return card;
+                    })(),
+                }));
+
+            const byRecent = entries.toSorted(compRecent);
+            const byFavorites = byRecent.filter(it=>it.card.isFavorite);
+
+            this.cardsByCategory = {
+                favorites: byFavorites.map(it=>it.card).slice(0, this.settings.numCards),
+                recents: byRecent.map(it=>it.card).slice(0, this.settings.numCards),
+                search: byRecent.map(it=>it.card),
+            };
+            this.cards = this.cardsByCategory[this.activeCategory] ?? [];
+            await this.ensureCardsLoaded(this.cards);
         } else {
             this.cards = [];
+            this.cardsByCategory = { favorites:[], recents:[], search:[] };
         }
         log('LandingPage.load COMPLETED', this);
     }
@@ -457,6 +496,64 @@ export class LandingPage {
         this.endInput();
     }
 
+
+
+    getCategoryButtons() {
+        return [
+            { key:'favorites', label:'Favourites' },
+            { key:'recents', label:'Recents' },
+            { key:'search', label:'Search' },
+        ];
+    }
+
+    async ensureCardsLoaded(cards) {
+        await Promise.all(cards.map(card=>card.load()));
+    }
+
+    getSearchFilteredCards() {
+        const query = this.searchQuery.trim().toLowerCase();
+        const searchCards = this.cardsByCategory.search ?? [];
+        if (!query) {
+            return searchCards.slice(0, this.settings.numCards);
+        }
+        const tokens = query.split(/\s+/).filter(Boolean);
+        const plainTokens = tokens.filter(it=>!it.startsWith('#'));
+        const tagTokens = tokens
+            .filter(it=>it.startsWith('#'))
+            .map(it=>it.slice(1).trim())
+            .filter(Boolean);
+        return searchCards.filter(card=>{
+            const text = card.searchText ?? '';
+            const plainMatch = plainTokens.every(it=>text.includes(it));
+            const tagMatch = tagTokens.every(it=>text.includes(it));
+            return plainMatch && tagMatch;
+        });
+    }
+
+    async setLoadingState(isLoading) {
+        if (!this.dom) return;
+        this.dom.classList.toggle('stlp--cardsLoading', isLoading);
+        await waitForFrame();
+    }
+
+    async renderCardsForCategory(root, category) {
+        await this.setLoadingState(true);
+        try {
+            root.innerHTML = '';
+            if (category === 'search') {
+                this.cards = this.getSearchFilteredCards();
+            } else {
+                this.cards = this.cardsByCategory[category] ?? [];
+            }
+            await this.ensureCardsLoaded(this.cards);
+            const els = await Promise.all(this.cards.map(async(card)=>await card.render(this.settings)));
+            els.forEach(it=>root.append(it));
+        } finally {
+            await this.setLoadingState(false);
+        }
+    }
+
+
     async renderContent() {
         const container = this.dom;
         const wrap = document.createElement('div'); {
@@ -465,12 +562,61 @@ export class LandingPage {
                 wrap.classList.add('stlp--highlightFavorites');
             }
             wrap.setAttribute('data-displayStyle', this.settings.displayStyle);
+
+            const tabs = document.createElement('div'); {
+                tabs.classList.add('stlp--categoryTabs');
+                const buttons = this.getCategoryButtons();
+                buttons.forEach(({ key, label })=>{
+                    const btn = document.createElement('button'); {
+                        btn.type = 'button';
+                        btn.classList.add('stlp--categoryTab');
+                        if (key === this.activeCategory) {
+                            btn.classList.add('stlp--active');
+                        }
+                        btn.textContent = label;
+                        btn.addEventListener('click', async()=>{
+                            if (this.activeCategory === key) return;
+                            this.activeCategory = key;
+                            this.settings.activeCategory = key;
+                            saveSettingsDebounced();
+                            tabs.querySelectorAll('.stlp--categoryTab').forEach(it=>it.classList.remove('stlp--active'));
+                            btn.classList.add('stlp--active');
+                            await this.renderCardsForCategory(root, key);
+                            searchWrap.style.display = key === 'search' ? '' : 'none';
+                        });
+                        tabs.append(btn);
+                    }
+                });
+                wrap.append(tabs);
+            }
+
+            const searchWrap = document.createElement('div'); {
+                searchWrap.classList.add('stlp--searchWrap');
+                searchWrap.style.display = this.activeCategory === 'search' ? '' : 'none';
+                const searchInput = document.createElement('input'); {
+                    searchInput.classList.add('stlp--searchInput', 'text_pole');
+                    searchInput.type = 'search';
+                    searchInput.placeholder = 'Search cards and #tags...';
+                    searchInput.value = this.searchQuery;
+                    searchInput.addEventListener('input', debounce(async()=>{
+                        this.searchQuery = searchInput.value;
+                        if (this.activeCategory !== 'search') return;
+                        await this.renderCardsForCategory(root, 'search');
+                    }, 150));
+                    searchWrap.append(searchInput);
+                }
+                wrap.append(searchWrap);
+            }
+
+            const loading = document.createElement('div'); {
+                loading.classList.add('stlp--cardsLoadingIndicator');
+                loading.innerHTML = '<div class="stlp--cardsLoadingDeck"></div><div class="stlp--cardsLoadingText">Shuffling cards...</div>';
+                wrap.append(loading);
+            }
+
             const root = document.createElement('div'); {
                 root.classList.add('stlp--cards');
-                const els = await Promise.all(this.cards.map(async(card)=>{
-                    return await card.render(this.settings);
-                }));
-                els.forEach(it=>root.append(it));
+                await this.renderCardsForCategory(root, this.activeCategory);
                 wrap.append(root);
             }
             container.append(wrap);
