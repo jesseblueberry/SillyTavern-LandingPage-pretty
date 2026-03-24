@@ -325,6 +325,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
   bottom: 0;
   left: 0;
   right: 0;
+  padding-bottom: calc(var(--stlp--cardHeight) * 0.08);
   display: flex;
   flex-direction: row;
   justify-content: center;
@@ -433,7 +434,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
 }
 .stlp--container .stlp--wrapper .stlp--cards > .stlp--cardWrap:hover > .stlp--card {
   scale: 1.25;
-  transform: translateY(0);
+  transform: translateY(calc(var(--stlp--cardHeight) * 0.08));
 }
 .stlp--container .stlp--wrapper .stlp--cards > .stlp--cardWrap:hover > .stlp--card > .stlp--name {
   opacity: 1;
@@ -445,7 +446,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
   flex-direction: column;
   transform-origin: bottom center;
   scale: 1;
-  transform: translateY(calc(var(--stlp--cardHeight) * 0.3));
+  transform: translateY(0);
   transition: 200ms;
 }
 .stlp--container .stlp--wrapper .stlp--cards > .stlp--cardWrap > .stlp--card > .stlp--name {
