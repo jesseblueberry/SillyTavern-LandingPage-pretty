@@ -294,6 +294,32 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
   height: 100%;
   z-index: 2000;
 }
+
+.stlp--container .stlp--wrapper .stlp--categoryTabs {
+  position: absolute;
+  top: 0.75em;
+  left: 0.75em;
+  display: flex;
+  gap: 0.75em;
+  z-index: 3;
+}
+.stlp--container .stlp--wrapper .stlp--categoryTabs > .stlp--categoryTab {
+  border: 0;
+  border-radius: 0.75em;
+  background: rgb(0 0 0 / 75%);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.8em 1.6em;
+  cursor: pointer;
+  transition: background-color 200ms;
+}
+.stlp--container .stlp--wrapper .stlp--categoryTabs > .stlp--categoryTab:hover {
+  background: rgb(0 0 0 / 90%);
+}
+.stlp--container .stlp--wrapper .stlp--categoryTabs > .stlp--categoryTab.stlp--active {
+  background: #0b7f9c;
+}
 .stlp--container .stlp--wrapper .stlp--cards {
   position: absolute;
   bottom: 0;
