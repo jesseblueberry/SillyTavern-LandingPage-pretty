@@ -2,6 +2,7 @@ import { characters, saveSettingsDebounced, this_chid } from '../../../../../scr
 import { extension_settings } from '../../../../extensions.js';
 import { groups, selected_group } from '../../../../group-chats.js';
 import { executeSlashCommands } from '../../../../slash-commands.js';
+import * as tagExports from '../../../../tags.js';
 import { debounce, delay, isTrueBoolean } from '../../../../utils.js';
 import { appReady, debounceAsync, log } from '../index.js';
 import { Card } from './Card.js';
@@ -9,8 +10,13 @@ import { waitForFrame } from './wait.js';
 
 export class LandingPage {
     /**@type {Card[]}*/ cards = [];
-    /**@type {Object.<string, Card[]>}*/ cardsByCategory = { favorites:[], recents:[], new:[] };
-    /**@type {'favorites'|'recents'|'new'}*/ activeCategory = 'favorites';
+    /**@type {Object.<'favorites'|'recents'|'search', Card[]>}*/ cardsByCategory = { favorites:[], recents:[], search:[] };
+    /**@type {'favorites'|'recents'|'search'}*/ activeCategory = 'favorites';
+    /**@type {Map<Card, any>}*/ cardEntries = new Map();
+    /**@type {string}*/ searchQuery = '';
+    /**@type {Set<string>}*/ selectedTagIds = new Set();
+    /**@type {Card[]}*/ searchResults = [];
+    /**@type {Array<{id:string, name:string}>}*/ availableTags = [];
 
     /**@type {Object}*/ settings;
 
@@ -62,6 +68,7 @@ export class LandingPage {
             hideTopBar: true,
             bgList: [],
             activeCategory: 'favorites',
+            searchQuery: '',
         }, extension_settings.landingPage ?? {});
         extension_settings.landingPage = this.settings;
         if (this.settings.hideTopBar) {
@@ -80,23 +87,16 @@ export class LandingPage {
 
         this.sheld = document.querySelector('#sheld');
         this.chatInput = document.querySelector('#send_textarea');
-        if (!['favorites', 'recents', 'new'].includes(this.settings.activeCategory)) {
+        if (!['favorites', 'recents', 'search'].includes(this.settings.activeCategory)) {
             this.settings.activeCategory = 'favorites';
         }
         this.activeCategory = this.settings.activeCategory;
+        this.searchQuery = String(this.settings.searchQuery ?? '');
     }
 
 
     async load() {
         log('LandingPage.load');
-        const getNewTimestamp = (char)=> Number(
-            char.create_date
-            ?? char.date_added
-            ?? char.date_create
-            ?? char.date_created
-            ?? char.date_last_chat
-            ?? 0,
-        ) || 0;
         const compRecent = (a,b)=>{
             if (this.settings.showFavorites) {
                 if (a.char.fav && !b.char.fav) return -1;
@@ -116,25 +116,31 @@ export class LandingPage {
                         };
                         return card;
                     })(),
-                    newTimestamp: getNewTimestamp(char),
                 }));
 
             const byRecent = entries.toSorted(compRecent);
             const byFavorites = byRecent.filter(it=>it.card.isFavorite);
-            const byNew = entries.toSorted((a,b)=>b.newTimestamp - a.newTimestamp);
+            this.cardEntries = new Map(entries.map(it=>[it.card, it]));
 
             this.cardsByCategory = {
                 favorites: byFavorites.map(it=>it.card).slice(0, this.settings.numCards),
                 recents: byRecent.map(it=>it.card).slice(0, this.settings.numCards),
-                new: byNew.map(it=>it.card).slice(0, this.settings.numCards),
+                search: byRecent.map(it=>it.card),
             };
+            this.availableTags = this.getAvailableTags(this.cardsByCategory.search);
+            this.updateSearchResults();
 
             const allCards = Array.from(new Set(Object.values(this.cardsByCategory).flat()));
             await Promise.all(allCards.map(card=>card.load()));
-            this.cards = this.cardsByCategory[this.activeCategory] ?? [];
+            this.cards = this.activeCategory === 'search'
+                ? this.searchResults.slice(0, this.settings.numCards)
+                : (this.cardsByCategory[this.activeCategory] ?? []);
         } else {
             this.cards = [];
-            this.cardsByCategory = { favorites:[], recents:[], new:[] };
+            this.cardEntries = new Map();
+            this.searchResults = [];
+            this.availableTags = [];
+            this.cardsByCategory = { favorites:[], recents:[], search:[] };
         }
         log('LandingPage.load COMPLETED', this);
     }
@@ -491,15 +497,126 @@ export class LandingPage {
         return [
             { key:'favorites', label:'Favourites' },
             { key:'recents', label:'Recents' },
-            { key:'new', label:'New' },
+            { key:'search', label:'Search' },
         ];
     }
 
     async renderCardsForCategory(root, category) {
         root.innerHTML = '';
-        this.cards = this.cardsByCategory[category] ?? [];
+        this.cards = category === 'search'
+            ? this.searchResults.slice(0, this.settings.numCards)
+            : (this.cardsByCategory[category] ?? []);
         const els = await Promise.all(this.cards.map(async(card)=>await card.render(this.settings)));
         els.forEach(it=>root.append(it));
+    }
+
+    getAvailableTags(cards) {
+        const tagsById = this.getTagsById();
+        const ids = new Set();
+        cards.forEach(card=>this.getCardTagIds(card).forEach(id=>ids.add(String(id))));
+        return Array.from(ids)
+            .map(id=>({ id, name: tagsById.get(id)?.name ?? id }))
+            .toSorted((a,b)=>a.name.localeCompare(b.name, undefined, { sensitivity:'base' }));
+    }
+
+    getTagsById() {
+        const out = new Map();
+        const candidates = [
+            tagExports.tags,
+            tagExports.characterTags,
+            tagExports.TAGS,
+            tagExports.allTags,
+            tagExports.power_user?.tags,
+        ];
+        for (const item of candidates) {
+            if (!Array.isArray(item)) continue;
+            item.forEach(tag=>{
+                const id = tag?.id ?? tag?.tag_id ?? tag?.uuid;
+                if (id === undefined || id === null) return;
+                const sid = String(id);
+                out.set(sid, {
+                    id: sid,
+                    name: String(tag?.name ?? tag?.title ?? sid),
+                });
+            });
+        }
+        return out;
+    }
+
+    getRawTagMap() {
+        const candidates = [
+            tagExports.tag_map,
+            tagExports.tagMap,
+            tagExports.character_tag_map,
+            tagExports.characterTagMap,
+            tagExports.groupTagMap,
+        ];
+        return candidates.find(it=>it && typeof it === 'object') ?? {};
+    }
+
+    getCardTagIds(card) {
+        const entry = this.cardEntries.get(card);
+        if (!entry?.char) return [];
+        const char = entry.char;
+        const rawMap = this.getRawTagMap();
+        const keys = [
+            char.avatar,
+            char.avatar_url,
+            char.name,
+            char.id,
+            char.chat,
+            char.chat_id,
+            this.getCharacterIdByAvatar(char.avatar),
+        ]
+            .filter(it=>it !== undefined && it !== null)
+            .map(String);
+        const found = [];
+        keys.forEach(key=>{
+            const arr = rawMap[key];
+            if (Array.isArray(arr)) {
+                arr.forEach(id=>found.push(String(id)));
+            }
+        });
+        return Array.from(new Set(found)).toSorted();
+    }
+
+    getCharacterIdByAvatar(avatar) {
+        if (!avatar) return null;
+        const idx = characters.findIndex(it=>it.avatar === avatar);
+        return idx >= 0 ? String(idx) : null;
+    }
+
+    updateSearchResults() {
+        const query = this.searchQuery.trim().toLowerCase();
+        const selected = Array.from(this.selectedTagIds).toSorted();
+        const source = this.cardsByCategory.search ?? [];
+        const matched = source.filter(card=>{
+            const entry = this.cardEntries.get(card);
+            const item = entry?.char ?? {};
+            const cardTagIds = this.getCardTagIds(card);
+            const tagsOk = selected.every(tagId=>cardTagIds.includes(tagId));
+            if (!tagsOk) return false;
+            if (!query) return true;
+            const searchBlob = [
+                card.name,
+                item.name,
+                item.description,
+                item.personality,
+                item.scenario,
+                item.first_mes,
+                item.mes_example,
+                item.creator_notes,
+                item.comment,
+                item.system_prompt,
+                item.post_history_instructions,
+                item.tags?.join?.(' '),
+            ]
+                .filter(Boolean)
+                .join('\n')
+                .toLowerCase();
+            return searchBlob.includes(query);
+        });
+        this.searchResults = matched;
     }
 
 
@@ -514,6 +631,8 @@ export class LandingPage {
 
             const tabs = document.createElement('div'); {
                 tabs.classList.add('stlp--categoryTabs');
+                const searchToolbar = document.createElement('div');
+                searchToolbar.classList.add('stlp--searchToolbar');
                 const buttons = this.getCategoryButtons();
                 buttons.forEach(({ key, label })=>{
                     const btn = document.createElement('button'); {
@@ -530,12 +649,79 @@ export class LandingPage {
                             saveSettingsDebounced();
                             tabs.querySelectorAll('.stlp--categoryTab').forEach(it=>it.classList.remove('stlp--active'));
                             btn.classList.add('stlp--active');
+                            searchToolbar.classList.toggle('stlp--active', key === 'search');
                             await this.renderCardsForCategory(root, key);
                         });
                         tabs.append(btn);
                     }
                 });
                 wrap.append(tabs);
+                searchToolbar.classList.toggle('stlp--active', this.activeCategory === 'search');
+                const searchInput = document.createElement('input'); {
+                    searchInput.classList.add('stlp--searchInput');
+                    searchInput.type = 'text';
+                    searchInput.placeholder = 'Search cards…';
+                    searchInput.value = this.searchQuery;
+                    searchInput.addEventListener('input', debounce(async()=>{
+                        this.searchQuery = searchInput.value;
+                        this.settings.searchQuery = this.searchQuery;
+                        this.updateSearchResults();
+                        saveSettingsDebounced();
+                        if (this.activeCategory === 'search') {
+                            await this.renderCardsForCategory(root, 'search');
+                        }
+                    }, 100));
+                    searchToolbar.append(searchInput);
+                }
+                if (this.availableTags.length > 0) {
+                    const chips = document.createElement('div'); {
+                        chips.classList.add('stlp--tagChips');
+                        this.availableTags.forEach(tag=>{
+                            const chip = document.createElement('button'); {
+                                chip.type = 'button';
+                                chip.classList.add('stlp--tagChip');
+                                if (this.selectedTagIds.has(tag.id)) {
+                                    chip.classList.add('stlp--active');
+                                }
+                                chip.textContent = tag.name;
+                                chip.addEventListener('click', async()=>{
+                                    if (this.selectedTagIds.has(tag.id)) {
+                                        this.selectedTagIds.delete(tag.id);
+                                        chip.classList.remove('stlp--active');
+                                    } else {
+                                        this.selectedTagIds.add(tag.id);
+                                        chip.classList.add('stlp--active');
+                                    }
+                                    this.updateSearchResults();
+                                    if (this.activeCategory === 'search') {
+                                        await this.renderCardsForCategory(root, 'search');
+                                    }
+                                });
+                                chips.append(chip);
+                            }
+                        });
+                        searchToolbar.append(chips);
+                    }
+                }
+                const clearBtn = document.createElement('button'); {
+                    clearBtn.type = 'button';
+                    clearBtn.classList.add('stlp--searchClear');
+                    clearBtn.textContent = 'Reset';
+                    clearBtn.addEventListener('click', async()=>{
+                        this.searchQuery = '';
+                        this.settings.searchQuery = '';
+                        searchInput.value = '';
+                        this.selectedTagIds.clear();
+                        searchToolbar.querySelectorAll('.stlp--tagChip').forEach(it=>it.classList.remove('stlp--active'));
+                        this.updateSearchResults();
+                        saveSettingsDebounced();
+                        if (this.activeCategory === 'search') {
+                            await this.renderCardsForCategory(root, 'search');
+                        }
+                    });
+                    searchToolbar.append(clearBtn);
+                }
+                wrap.append(searchToolbar);
             }
 
             const root = document.createElement('div'); {

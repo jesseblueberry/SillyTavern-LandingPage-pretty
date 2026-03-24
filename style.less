@@ -204,6 +204,65 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 			}
 		}
 
+		.stlp--searchToolbar {
+			position: absolute;
+			top: 4.5em;
+			left: 0.75em;
+			right: 0.75em;
+			display: none;
+			align-items: center;
+			gap: 0.5em;
+			padding: 0.6em;
+			border-radius: 0.8em;
+			background: rgb(0 0 0 / 72%);
+			backdrop-filter: blur(4px);
+			z-index: 3;
+
+			&.stlp--active {
+				display: flex;
+			}
+
+			> .stlp--searchInput {
+				flex: 1 1 auto;
+				min-width: 12em;
+				border: 1px solid rgb(255 255 255 / 25%);
+				border-radius: 0.65em;
+				padding: 0.55em 0.75em;
+				background: rgb(255 255 255 / 10%);
+				color: #fff;
+			}
+
+			> .stlp--tagChips {
+				flex: 1 1 auto;
+				display: flex;
+				gap: 0.4em;
+				overflow-x: auto;
+				padding-bottom: 0.1em;
+			}
+
+			.stlp--tagChip,
+			> .stlp--searchClear {
+				border: 1px solid rgb(255 255 255 / 25%);
+				background: rgb(255 255 255 / 8%);
+				color: #fff;
+				border-radius: 999px;
+				padding: 0.45em 0.8em;
+				font-weight: 600;
+				cursor: pointer;
+				white-space: nowrap;
+				transition: 150ms;
+			}
+
+			.stlp--tagChip.stlp--active {
+				background: #0b7f9c;
+				border-color: #0b7f9c;
+			}
+
+			> .stlp--searchClear {
+				border-radius: 0.65em;
+			}
+		}
+
 		.stlp--cards {
 			position: absolute;
 			bottom: 0;
