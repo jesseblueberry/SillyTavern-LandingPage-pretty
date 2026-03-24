@@ -9,6 +9,8 @@ import { waitForFrame } from './wait.js';
 
 export class LandingPage {
     /**@type {Card[]}*/ cards = [];
+    /**@type {Object.<string, Card[]>}*/ cardsByCategory = { favorites:[], recents:[], new:[] };
+    /**@type {'favorites'|'recents'|'new'}*/ activeCategory = 'favorites';
 
     /**@type {Object}*/ settings;
 
@@ -59,6 +61,7 @@ export class LandingPage {
             lastChat: { character:null, group:null },
             hideTopBar: true,
             bgList: [],
+            activeCategory: 'favorites',
         }, extension_settings.landingPage ?? {});
         extension_settings.landingPage = this.settings;
         if (this.settings.hideTopBar) {
@@ -77,36 +80,61 @@ export class LandingPage {
 
         this.sheld = document.querySelector('#sheld');
         this.chatInput = document.querySelector('#send_textarea');
+        if (!['favorites', 'recents', 'new'].includes(this.settings.activeCategory)) {
+            this.settings.activeCategory = 'favorites';
+        }
+        this.activeCategory = this.settings.activeCategory;
     }
 
 
     async load() {
         log('LandingPage.load');
-        // this.isStartingVideo = false;
+        const getNewTimestamp = (char)=> Number(
+            char.create_date
+            ?? char.date_added
+            ?? char.date_create
+            ?? char.date_created
+            ?? char.date_last_chat
+            ?? 0,
+        ) || 0;
+        const compRecent = (a,b)=>{
+            if (this.settings.showFavorites) {
+                if (a.char.fav && !b.char.fav) return -1;
+                if (!a.char.fav && b.char.fav) return 1;
+            }
+            return (b.char.date_last_chat ?? 0) - (a.char.date_last_chat ?? 0);
+        };
         if (this.settings.numCards > 0) {
-            const compCards = (a,b)=>{
-                if (this.settings.showFavorites) {
-                    if (a.fav && !b.fav) return -1;
-                    if (!a.fav && b.fav) return 1;
-                }
-                return b.date_last_chat - a.date_last_chat;
-            };
-            const cards = await Promise.all(
-                [...characters, ...groups]
-                    .filter(it=>!this.settings.onlyFavorites || it.fav)
-                    .toSorted(compCards)
-                    .slice(0, this.settings.numCards)
-                    .map(it=>{
-                        const card = new Card(it);
+            const entries = [...characters, ...groups]
+                .filter(it=>!this.settings.onlyFavorites || it.fav)
+                .map(char=>({
+                    char,
+                    card: (()=>{
+                        const card = new Card(char);
                         card.onOpenChat = ()=>{
                             this.dom.classList.add('stlp--busy');
                         };
-                        return card.load();
-                    }),
-            );
-            this.cards = cards;
+                        return card;
+                    })(),
+                    newTimestamp: getNewTimestamp(char),
+                }));
+
+            const byRecent = entries.toSorted(compRecent);
+            const byFavorites = byRecent.filter(it=>it.card.isFavorite);
+            const byNew = entries.toSorted((a,b)=>b.newTimestamp - a.newTimestamp);
+
+            this.cardsByCategory = {
+                favorites: byFavorites.map(it=>it.card).slice(0, this.settings.numCards),
+                recents: byRecent.map(it=>it.card).slice(0, this.settings.numCards),
+                new: byNew.map(it=>it.card).slice(0, this.settings.numCards),
+            };
+
+            const allCards = Array.from(new Set(Object.values(this.cardsByCategory).flat()));
+            await Promise.all(allCards.map(card=>card.load()));
+            this.cards = this.cardsByCategory[this.activeCategory] ?? [];
         } else {
             this.cards = [];
+            this.cardsByCategory = { favorites:[], recents:[], new:[] };
         }
         log('LandingPage.load COMPLETED', this);
     }
@@ -457,6 +485,24 @@ export class LandingPage {
         this.endInput();
     }
 
+
+
+    getCategoryButtons() {
+        return [
+            { key:'favorites', label:'Favourites' },
+            { key:'recents', label:'Recents' },
+            { key:'new', label:'New' },
+        ];
+    }
+
+    async renderCardsForCategory(root, category) {
+        root.innerHTML = '';
+        this.cards = this.cardsByCategory[category] ?? [];
+        const els = await Promise.all(this.cards.map(async(card)=>await card.render(this.settings)));
+        els.forEach(it=>root.append(it));
+    }
+
+
     async renderContent() {
         const container = this.dom;
         const wrap = document.createElement('div'); {
@@ -465,12 +511,36 @@ export class LandingPage {
                 wrap.classList.add('stlp--highlightFavorites');
             }
             wrap.setAttribute('data-displayStyle', this.settings.displayStyle);
+
+            const tabs = document.createElement('div'); {
+                tabs.classList.add('stlp--categoryTabs');
+                const buttons = this.getCategoryButtons();
+                buttons.forEach(({ key, label })=>{
+                    const btn = document.createElement('button'); {
+                        btn.type = 'button';
+                        btn.classList.add('stlp--categoryTab');
+                        if (key === this.activeCategory) {
+                            btn.classList.add('stlp--active');
+                        }
+                        btn.textContent = label;
+                        btn.addEventListener('click', async()=>{
+                            if (this.activeCategory === key) return;
+                            this.activeCategory = key;
+                            this.settings.activeCategory = key;
+                            saveSettingsDebounced();
+                            tabs.querySelectorAll('.stlp--categoryTab').forEach(it=>it.classList.remove('stlp--active'));
+                            btn.classList.add('stlp--active');
+                            await this.renderCardsForCategory(root, key);
+                        });
+                        tabs.append(btn);
+                    }
+                });
+                wrap.append(tabs);
+            }
+
             const root = document.createElement('div'); {
                 root.classList.add('stlp--cards');
-                const els = await Promise.all(this.cards.map(async(card)=>{
-                    return await card.render(this.settings);
-                }));
-                els.forEach(it=>root.append(it));
+                await this.renderCardsForCategory(root, this.activeCategory);
                 wrap.append(root);
             }
             container.append(wrap);
