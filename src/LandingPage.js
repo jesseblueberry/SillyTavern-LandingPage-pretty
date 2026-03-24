@@ -129,8 +129,6 @@ export class LandingPage {
                 new: byNew.map(it=>it.card).slice(0, this.settings.numCards),
             };
 
-            const allCards = Array.from(new Set(Object.values(this.cardsByCategory).flat()));
-            await Promise.all(allCards.map(card=>card.load()));
             this.cards = this.cardsByCategory[this.activeCategory] ?? [];
         } else {
             this.cards = [];
@@ -498,8 +496,9 @@ export class LandingPage {
     async renderCardsForCategory(root, category) {
         root.innerHTML = '';
         this.cards = this.cardsByCategory[category] ?? [];
-        const els = await Promise.all(this.cards.map(async(card)=>await card.render(this.settings)));
-        els.forEach(it=>root.append(it));
+        for (const card of this.cards) {
+            root.append(await card.render(this.settings));
+        }
     }
 
 
@@ -540,7 +539,9 @@ export class LandingPage {
 
             const root = document.createElement('div'); {
                 root.classList.add('stlp--cards');
+                const firstRenderStart = performance.now();
                 await this.renderCardsForCategory(root, this.activeCategory);
+                log('LandingPage.renderContent first-card-render-ms', Math.round(performance.now() - firstRenderStart));
                 wrap.append(root);
             }
             container.append(wrap);
