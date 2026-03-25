@@ -514,6 +514,7 @@ export class LandingPage {
     }
 
     async renderCardsForCategory(root, category) {
+        root.setAttribute('data-category', category);
         root.innerHTML = '';
         this.cards = category === 'search'
             ? this.searchResults.slice(0, this.settings.numCards)
