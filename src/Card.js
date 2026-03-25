@@ -277,8 +277,30 @@ export class Card {
         if (!this.domAvatar) return;
         this.domAvatar.innerHTML = '';
         if (settings.showExpression && this.isLoaded) {
-            await Promise.all(this.getLastMembers(settings.numAvatars).map(async(mem)=>{
-                const memImg = await mem.loadExpression(settings.expression, this.chatMetadata?.triggerCards?.costumes?.[mem.name]);
+            const rendered = [];
+            const members = this.getLastMembers(settings.numAvatars);
+            const images = await Promise.allSettled(members.map(async(mem)=>mem.loadExpression(settings.expression, this.chatMetadata?.triggerCards?.costumes?.[mem.name])));
+            images.forEach(result=>{
+                if (result.status != 'fulfilled') return;
+                const memImg = result.value;
+                if (!memImg?.naturalHeight || !memImg?.naturalWidth) return;
+                const img = document.createElement('img'); {
+                    img.classList.add('stlp--avatarImg');
+                    img.style.width = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
+                    img.style.flex = `0 0 calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
+                    img.style.marginRight = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth} / -2)`;
+                    img.src = memImg.src;
+                }
+                rendered.push(img);
+            });
+            if (rendered.length > 0) {
+                rendered.forEach(img=>this.domAvatar.append(img));
+                return;
+            }
+        }
+        try {
+            const memImg = await this.loadAvatar();
+            if (memImg?.naturalHeight && memImg?.naturalWidth) {
                 const img = document.createElement('img'); {
                     img.classList.add('stlp--avatarImg');
                     img.style.width = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
@@ -287,18 +309,27 @@ export class Card {
                     img.src = memImg.src;
                 }
                 this.domAvatar.append(img);
-            }));
-            return;
+                return;
+            }
+        } catch {
+            /* keep fallback below */
         }
-        const memImg = await this.loadAvatar();
-        const img = document.createElement('img'); {
-            img.classList.add('stlp--avatarImg');
-            img.style.width = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
-            img.style.flex = `0 0 calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
-            img.style.marginRight = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth} / -2)`;
-            img.src = memImg.src;
+        const fallback = document.createElement('div'); {
+            fallback.classList.add('stlp--avatarImg');
+            fallback.style.width = 'var(--stlp--cardHeight)';
+            fallback.style.flex = '0 0 var(--stlp--cardHeight)';
+            fallback.style.marginRight = 'calc(var(--stlp--cardHeight) / -2)';
+            fallback.textContent = this.name?.[0]?.toUpperCase() ?? '?';
+            fallback.style.display = 'flex';
+            fallback.style.alignItems = 'center';
+            fallback.style.justifyContent = 'center';
+            fallback.style.fontSize = 'calc(var(--stlp--cardHeight) / 3)';
+            fallback.style.fontWeight = '700';
+            fallback.style.background = 'rgba(0, 0, 0, 0.45)';
+            fallback.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+            fallback.style.borderRadius = '8px';
         }
-        this.domAvatar.append(img);
+        this.domAvatar.append(fallback);
     }
 
     updatePreviewDom() {
