@@ -8,26 +8,6 @@ import { appReady, debounceAsync, log } from '../index.js';
 import { Card } from './Card.js';
 import { waitForFrame } from './wait.js';
 
-const copySorted = (arr, compareFn)=>{
-    const out = [...arr];
-    return compareFn ? out.sort(compareFn) : out.sort();
-};
-
-const createPromiseResolvers = ()=>{
-    if (typeof Promise.withResolvers === 'function') {
-        return Promise.withResolvers();
-    }
-    /** @type {(value?: unknown)=>void} */
-    let resolve;
-    /** @type {(reason?: unknown)=>void} */
-    let reject;
-    const promise = new Promise((res, rej)=>{
-        resolve = res;
-        reject = rej;
-    });
-    return { promise, resolve, reject };
-};
-
 export class LandingPage {
     /**@type {Card[]}*/ cards = [];
     /**@type {Boolean}*/ isLoadingCards = false;
@@ -139,7 +119,7 @@ export class LandingPage {
                     })(),
                 }));
 
-            const byRecent = copySorted(entries, compRecent);
+            const byRecent = entries.toSorted(compRecent);
             const byFavorites = byRecent.filter(it=>it.card.isFavorite);
             this.cardEntries = new Map(entries.map(it=>[it.card, it]));
 
@@ -169,7 +149,7 @@ export class LandingPage {
             log('LandingPage.updateBgresultList COMPLETED OLD PROMISE');
             return;
         }
-        const { promise, resolve } = createPromiseResolvers();
+        const { promise, resolve } = Promise.withResolvers();
         this.bgResultUpdatePromise = promise;
         this.bgResultList = [];
         for (const item of this.settings.bgList) {
@@ -532,7 +512,7 @@ export class LandingPage {
         cards.forEach(card=>this.getCardTagIds(card).forEach(id=>ids.add(String(id))));
         return Array.from(ids)
             .map(id=>({ id, name: tagsById.get(id)?.name ?? id }))
-            .sort((a,b)=>a.name.localeCompare(b.name, undefined, { sensitivity:'base' }));
+            .toSorted((a,b)=>a.name.localeCompare(b.name, undefined, { sensitivity:'base' }));
     }
 
     getTagsById() {
@@ -593,7 +573,7 @@ export class LandingPage {
                 arr.forEach(id=>found.push(String(id)));
             }
         });
-        return copySorted(Array.from(new Set(found)));
+        return Array.from(new Set(found)).toSorted();
     }
 
     getCharacterIdByAvatar(avatar) {
@@ -604,7 +584,7 @@ export class LandingPage {
 
     updateSearchResults() {
         const query = this.searchQuery.trim().toLowerCase();
-        const selected = copySorted(Array.from(this.selectedTagIds));
+        const selected = Array.from(this.selectedTagIds).toSorted();
         const source = this.cardsByCategory.search ?? [];
         const matched = source.filter(card=>{
             const entry = this.cardEntries.get(card);
