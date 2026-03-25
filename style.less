@@ -80,6 +80,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 .stlp--container {
 	--stlp--cardHeight: 200px;
 	--stlp--cardWidth: calc(var(--stlp--cardHeight) / 144 * 96);
+	--stlp--cardsTopSpacer: 6em;
 }
 
 
@@ -345,6 +346,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 
 		.stlp--cards {
 			position: absolute;
+			top: var(--stlp--cardsTopSpacer);
 			bottom: 0;
 			left: 0;
 			right: 0;
@@ -490,7 +492,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 
 	.stlp--wrapper[data-displayStyle="Wall"] {
 		.stlp--cards {
-			inset: 1em;
+			inset: var(--stlp--cardsTopSpacer) 1em 1em;
 			flex-wrap: wrap;
 			align-items: flex-start;
 			justify-content: center;
@@ -531,7 +533,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 
 	.stlp--wrapper[data-displayStyle="InfoWall"] {
 		.stlp--cards {
-			inset: 1em;
+			inset: var(--stlp--cardsTopSpacer) 1em 1em;
 			flex-direction: column;
 			align-items: stretch;
 			justify-content: flex-start;

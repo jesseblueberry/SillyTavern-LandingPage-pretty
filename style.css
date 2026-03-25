@@ -70,6 +70,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
 .stlp--container {
   --stlp--cardHeight: 200px;
   --stlp--cardWidth: calc(var(--stlp--cardHeight) / 144 * 96);
+  --stlp--cardsTopSpacer: 6em;
 }
 .stlp--fader {
   position: fixed;
@@ -452,6 +453,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
 }
 .stlp--container .stlp--wrapper .stlp--cards {
   position: absolute;
+  top: var(--stlp--cardsTopSpacer);
   bottom: 0;
   left: 0;
   right: 0;
@@ -641,7 +643,7 @@ html > body.no-blur .stlp--container .stlp--inputBlocker {
   top: calc((100svh - var(--topBarBlockSize)) / 2 + var(--topBarBlockSize));
 }
 .stlp--container .stlp--wrapper[data-displayStyle="Wall"] .stlp--cards {
-  inset: 1em;
+  inset: var(--stlp--cardsTopSpacer) 1em 1em;
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: center;
@@ -675,7 +677,7 @@ html > body.no-blur .stlp--container .stlp--inputBlocker {
   display: none;
 }
 .stlp--container .stlp--wrapper[data-displayStyle="InfoWall"] .stlp--cards {
-  inset: 1em;
+  inset: var(--stlp--cardsTopSpacer) 1em 1em;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
