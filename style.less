@@ -244,6 +244,8 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 		}
 	}
 	.stlp--wrapper {
+		--stlp--cardsTopOffset: 4.5em;
+		--stlp--cardsTopOffsetSearch: 8.25em;
 		flex: 1 1 auto;
 		position: relative;
 		height: 100%;
@@ -253,6 +255,10 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 		// right: 0;
 		// bottom: 0;
 		z-index: 2000;
+
+		&:has(.stlp--searchToolbar.stlp--active) {
+			--stlp--cardsTopOffset: var(--stlp--cardsTopOffsetSearch);
+		}
 
 
 		.stlp--categoryTabs {
@@ -334,8 +340,8 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 			}
 
 			.stlp--tagChip.stlp--active {
-				background: #0b7f9c;
-				border-color: #0b7f9c;
+				background: #51a0de;
+				border-color: #51a0de;
 			}
 
 			> .stlp--searchClear {
@@ -345,6 +351,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 
 		.stlp--cards {
 			position: absolute;
+			top: var(--stlp--cardsTopOffset);
 			bottom: 0;
 			left: 0;
 			right: 0;
