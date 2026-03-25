@@ -5,11 +5,6 @@ import { Member } from './Member.js';
 import { waitForFrame } from './wait.js';
 
 export class Card {
-    static previewCache = new Map();
-    static previewQueue = [];
-    static activePreviewLoads = 0;
-    static previewConcurrency = 6;
-
     /**@type {String}*/ name;
     /**@type {Member[]}*/ members;
     /**@type {Boolean}*/ isGroup;
@@ -28,13 +23,10 @@ export class Card {
     /**@type {HTMLImageElement}*/ avatarImg;
 
     /**@type {Boolean}*/ isLoaded = false;
-    /**@type {Promise<Card>}*/ loadPromise;
-    /**@type {Promise<Card>}*/ scheduledLoadPromise;
 
     /**@type {HTMLElement}*/ dom;
     /**@type {HTMLElement}*/ domName;
     /**@type {HTMLElement}*/ domAvatar;
-    /**@type {HTMLElement}*/ domMessage;
 
     /**@type {Function}*/ onOpenChat;
 
@@ -82,38 +74,6 @@ export class Card {
     }
 
 
-    static runPreviewQueue() {
-        while (Card.activePreviewLoads < Card.previewConcurrency && Card.previewQueue.length) {
-            const task = Card.previewQueue.shift();
-            Card.activePreviewLoads++;
-            Promise.resolve()
-                .then(task)
-                .finally(()=>{
-                    Card.activePreviewLoads--;
-                    Card.runPreviewQueue();
-                })
-            ;
-        }
-    }
-
-    static enqueuePreview(task) {
-        return new Promise((resolve, reject)=>{
-            Card.previewQueue.push(async()=>{
-                try {
-                    resolve(await task());
-                } catch (err) {
-                    reject(err);
-                }
-            });
-            Card.runPreviewQueue();
-        });
-    }
-
-
-    getPreviewCacheKey() {
-        return this.isGroup ? `group:${this.avatar}` : `avatar:${this.avatar}`;
-    }
-
     getCharByName(name) {
         return characters.find(it=>it.name == name);
     }
@@ -124,79 +84,30 @@ export class Card {
 
     async reload() {
         this.isLoaded = false;
-        this.loadPromise = null;
-        this.scheduledLoadPromise = null;
         await this.load();
     }
-
     async load() {
-        if (this.isLoaded) return this;
-        if (this.loadPromise) return this.loadPromise;
-        const cacheKey = this.getPreviewCacheKey();
-        const cached = Card.previewCache.get(cacheKey);
-        if (cached) {
-            this.lastMembers = cached.lastMembers;
-            this.lastMessage = cached.lastMessage;
-            this.chatMetadata = cached.chatMetadata;
-            this.isLoaded = true;
-            this.updatePreviewDom();
-            return this;
-        }
-
-        this.loadPromise = Card.enqueuePreview(async()=>{
-            const response = await fetch(`${this.chatEndpoint}/get`, {
-                method: 'POST',
-                headers: getRequestHeaders(),
-                body: JSON.stringify(this.getChatBody),
-                cache: 'no-cache',
-            });
-            if (response.ok) {
-                let mesList = await response.json() ?? [];
-                if (!Array.isArray(mesList)) mesList = [];
-                this.updateLastMembers(mesList);
-                this.lastMessage = mesList.slice(-1)[0];
-                this.chatMetadata = this.isGroup ? groups.find(it=>it.name == this.name)?.chat_metadata ?? {} : mesList[0]?.['chat_metadata'] ?? {};
-                Card.previewCache.set(cacheKey, {
-                    lastMembers: this.lastMembers?.slice() ?? this.members.slice(),
-                    lastMessage: this.lastMessage,
-                    chatMetadata: this.chatMetadata,
-                });
-            } else {
-                this.lastMembers = this.members.slice();
-                this.chatMetadata = {};
-            }
-            this.isLoaded = true;
-            this.updatePreviewDom();
-            return this;
-        }).finally(()=>{
-            this.loadPromise = null;
+        if (this.isLoaded) return;
+        const response = await fetch(`${this.chatEndpoint}/get`, {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify(this.getChatBody),
+            cache: 'no-cache',
         });
-
-        return this.loadPromise;
-    }
-
-    schedulePreviewLoad() {
-        if (this.isLoaded || this.loadPromise || this.scheduledLoadPromise) return;
-        const start = ()=>{
-            this.scheduledLoadPromise = this.load().finally(()=>{
-                this.scheduledLoadPromise = null;
-            });
-        };
-        if ('requestIdleCallback' in window) {
-            window.requestIdleCallback(()=>start(), { timeout: 250 });
-        } else {
-            setTimeout(start, 0);
+        if (response.ok) {
+            let mesList = await response.json() ?? [];
+            if (!Array.isArray(mesList)) mesList = [];
+            this.updateLastMembers(mesList);
+            this.lastMessage = mesList.slice(-1)[0];
+            this.chatMetadata = this.isGroup ? groups.find(it=>it.name == this.name).chat_metadata : mesList[0]?.['chat_metadata'] ?? {};
         }
+        return this;
     }
 
     async loadAvatar() {
         return new Promise((resolve, reject)=>{
             const img = new Image();
             this.avatarImg = img;
-            img.decoding = 'async';
-            if ('loading' in img) {
-                img.loading = 'lazy';
-            }
             img.addEventListener('load', ()=>resolve(img));
             img.addEventListener('error', ()=>reject());
             img.src = this.isGroup ? this.avatar : `/characters/${this.avatar}`;
@@ -230,7 +141,7 @@ export class Card {
     }
 
     getLastMembers(num) {
-        return (this.lastMembers ?? this.members).slice(0, num);
+        return this.lastMembers.slice(0, num);
     }
 
 
@@ -258,63 +169,8 @@ export class Card {
         this.openChat();
     }
 
-    updateMessage() {
-        if (!this.domMessage) return;
-        this.domMessage.innerHTML = '';
-        if (!this.lastMessage) return;
-        let messageText = substituteParams(this.lastMessage.mes ?? '');
-        messageText = messageFormatting(
-            messageText,
-            this.lastMessage.name,
-            false,
-            this.lastMessage.is_user,
-            null,
-        );
-        this.domMessage.innerHTML = messageText;
-    }
-
-    async renderAvatars(settings) {
-        if (!this.domAvatar) return;
-        this.domAvatar.innerHTML = '';
-        if (settings.showExpression && this.isLoaded) {
-            await Promise.all(this.getLastMembers(settings.numAvatars).map(async(mem)=>{
-                const memImg = await mem.loadExpression(settings.expression, this.chatMetadata?.triggerCards?.costumes?.[mem.name]);
-                const img = document.createElement('img'); {
-                    img.classList.add('stlp--avatarImg');
-                    img.style.width = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
-                    img.style.flex = `0 0 calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
-                    img.style.marginRight = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth} / -2)`;
-                    img.src = memImg.src;
-                }
-                this.domAvatar.append(img);
-            }));
-            return;
-        }
-        const memImg = await this.loadAvatar();
-        const img = document.createElement('img'); {
-            img.classList.add('stlp--avatarImg');
-            img.style.width = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
-            img.style.flex = `0 0 calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
-            img.style.marginRight = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth} / -2)`;
-            img.src = memImg.src;
-        }
-        this.domAvatar.append(img);
-    }
-
-    updatePreviewDom() {
-        if (!this.dom) return;
-        this.updateMessage();
-        this.renderAvatars(this.lastRenderSettings ?? {}).catch(()=>{});
-    }
-
-    /** @type {Object} */ lastRenderSettings;
 
     async render(settings) {
-        this.lastRenderSettings = settings;
-        if (this.dom) {
-            this.schedulePreviewLoad();
-            return this.dom;
-        }
         const wrap = document.createElement('div'); {
             this.dom = wrap;
             wrap.classList.add('stlp--cardWrap');
@@ -325,7 +181,7 @@ export class Card {
                 }
                 item.addEventListener('click', ()=>this.goToChat());
                 item.addEventListener('wheel', async(evt)=>{
-                    this.domMessage.scrollTop += evt.deltaY;
+                    message.scrollTop += evt.deltaY;
                 });
                 const name = document.createElement('div'); {
                     this.domName = name;
@@ -336,20 +192,52 @@ export class Card {
                 const ava = document.createElement('div'); {
                     this.domAvatar = ava;
                     ava.classList.add('stlp--avatar');
+                    if (settings.showExpression) {
+                        await Promise.all(this.getLastMembers(settings.numAvatars).map(async(mem)=>{
+                            const memImg = await mem.loadExpression(settings.expression, this.chatMetadata?.triggerCards?.costumes?.[mem.name]);
+                            const img = document.createElement('img'); {
+                                img.classList.add('stlp--avatarImg');
+                                img.style.width = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
+                                img.style.flex = `0 0 calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
+                                img.style.marginRight = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth} / -2)`;
+                                img.src = memImg.src;
+                            }
+                            ava.append(img);
+                        }));
+                    } else {
+                        const memImg = await this.loadAvatar();
+                        const img = document.createElement('img'); {
+                            img.classList.add('stlp--avatarImg');
+                            img.style.width = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
+                            img.style.flex = `0 0 calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth})`;
+                            img.style.marginRight = `calc(var(--stlp--cardHeight) / ${memImg.naturalHeight} * ${memImg.naturalWidth} / -2)`;
+                            img.src = memImg.src;
+                        }
+                        ava.append(img);
+                    }
                     item.append(ava);
                 }
                 wrap.append(item);
             }
             const message = document.createElement('div'); {
-                this.domMessage = message;
                 message.classList.add('stlp--mes');
                 message.classList.add('mes_text');
+                if (this.lastMessage) {
+                    let messageText = substituteParams(this.lastMessage.mes ?? '');
+                    // setCharacterId(-1);
+                    messageText = messageFormatting(
+                        messageText,
+                        this.lastMessage.name,
+                        false,
+                        this.lastMessage.is_user,
+                        null,
+                    );
+                    // setCharacterId(undefined);
+                    message.innerHTML = messageText;
+                }
                 wrap.append(message);
             }
         }
-        await this.renderAvatars(settings);
-        this.schedulePreviewLoad();
-        this.updateMessage();
         return wrap;
     }
 }

@@ -130,7 +130,11 @@ export class LandingPage {
             this.availableTags = this.getAvailableTags(this.cardsByCategory.search);
             this.updateSearchResults();
 
-            this.cards = this.cardsByCategory[this.activeCategory] ?? [];
+            const allCards = Array.from(new Set(Object.values(this.cardsByCategory).flat()));
+            await Promise.all(allCards.map(card=>card.load()));
+            this.cards = this.activeCategory === 'search'
+                ? this.searchResults.slice(0, this.settings.numCards)
+                : (this.cardsByCategory[this.activeCategory] ?? []);
         } else {
             this.cards = [];
             this.cardEntries = new Map();
@@ -499,10 +503,11 @@ export class LandingPage {
 
     async renderCardsForCategory(root, category) {
         root.innerHTML = '';
-        this.cards = this.cardsByCategory[category] ?? [];
-        for (const card of this.cards) {
-            root.append(await card.render(this.settings));
-        }
+        this.cards = category === 'search'
+            ? this.searchResults.slice(0, this.settings.numCards)
+            : (this.cardsByCategory[category] ?? []);
+        const els = await Promise.all(this.cards.map(async(card)=>await card.render(this.settings)));
+        els.forEach(it=>root.append(it));
     }
 
     getAvailableTags(cards) {
@@ -721,9 +726,7 @@ export class LandingPage {
 
             const root = document.createElement('div'); {
                 root.classList.add('stlp--cards');
-                const firstRenderStart = performance.now();
                 await this.renderCardsForCategory(root, this.activeCategory);
-                log('LandingPage.renderContent first-card-render-ms', Math.round(performance.now() - firstRenderStart));
                 wrap.append(root);
             }
             container.append(wrap);
