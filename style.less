@@ -61,20 +61,16 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 }
 @keyframes stlp--deckShuffle {
     0%, 100% {
-        transform: translate3d(0, 0, 0) rotate(-5deg);
-        opacity: 0.3;
+        transform: translate(-50%, -50%) translateX(var(--stlp--offsetX)) rotate(var(--stlp--offsetR));
     }
-    25% {
-        transform: translate3d(56px, -18px, 0) rotate(8deg);
-        opacity: 0.95;
+    20% {
+        transform: translate(-50%, -50%) translateX(calc(var(--stlp--offsetX) - 34px)) translateY(-4px) rotate(calc(var(--stlp--offsetR) - 9deg));
     }
-    50% {
-        transform: translate3d(0, -36px, 0) rotate(-2deg);
-        opacity: 0.7;
+    45% {
+        transform: translate(-50%, -50%) translateX(calc(var(--stlp--offsetX) + 38px)) translateY(-20px) rotate(calc(var(--stlp--offsetR) + 12deg));
     }
-    75% {
-        transform: translate3d(-54px, -16px, 0) rotate(-10deg);
-        opacity: 0.9;
+    68% {
+        transform: translate(-50%, -50%) translateX(calc(var(--stlp--offsetX) - 22px)) translateY(-8px) rotate(calc(var(--stlp--offsetR) - 6deg));
     }
 }
 
@@ -145,7 +141,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 	> .stlp--video {
 		z-index: -1;
 	}
-	.stlp--startupLoading {
+		.stlp--startupLoading {
 		position: absolute;
 		inset: 0;
 		z-index: 5;
@@ -153,7 +149,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 16px;
+			gap: 8px;
 		background: radial-gradient(circle at center, rgba(0 0 0 / 45%), rgba(0 0 0 / 75%));
 		backdrop-filter: blur(4px);
 		transition: opacity 200ms ease;
@@ -167,6 +163,8 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 			height: 130px;
 			pointer-events: none;
 			.stlp--startupDeckCard {
+				--stlp--offsetX: calc((var(--stlp--deck-i) - 2) * 7px);
+				--stlp--offsetR: calc((var(--stlp--deck-i) - 2) * 2deg);
 				position: absolute;
 				left: 50%;
 				top: 50%;
@@ -174,14 +172,18 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 				height: 118px;
 				border-radius: 12px;
 				border: 1px solid rgba(255 255 255 / 0.28);
-				background: linear-gradient(130deg, rgba(255 255 255 / 0.3), rgba(255 255 255 / 0.08));
+				background:
+					linear-gradient(130deg, rgba(255 255 255 / 0.3), rgba(255 255 255 / 0.08)),
+					repeating-linear-gradient(45deg, rgba(255 255 255 / 0.09) 0 7px, rgba(255 255 255 / 0.02) 7px 14px);
 				box-shadow: 0 12px 24px rgba(0 0 0 / 0.35);
-				transform: translate(-50%, -50%);
-				animation: stlp--deckShuffle 1.7s ease-in-out infinite;
-				animation-delay: calc(var(--stlp--deck-i) * -0.2s);
+				transform: translate(-50%, -50%) translateX(var(--stlp--offsetX)) rotate(var(--stlp--offsetR));
+				animation: stlp--deckShuffle 1.45s cubic-bezier(.5, .06, .46, .98) infinite;
+				animation-delay: calc(var(--stlp--deck-i) * -0.13s);
+				opacity: calc(0.48 + var(--stlp--deck-i) * 0.1);
 			}
 		}
 		.stlp--startupLoadingLabel {
+			margin-top: 20px;
 			font-size: 15px;
 			font-weight: 600;
 			letter-spacing: 0.01em;
@@ -189,6 +191,7 @@ html > body.stlp--hideTopBar:has(.stlp--container) > {
 			opacity: 0.95;
 		}
 		.stlp--startupLoadingProgress {
+			margin-top: 8px;
 			width: min(420px, 70vw);
 			height: 8px;
 			border-radius: 999px;
