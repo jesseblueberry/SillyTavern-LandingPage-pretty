@@ -139,6 +139,14 @@ export class LandingPage {
             this.availableTags = this.getAvailableTags(this.cardsByCategory.search);
             this.updateSearchResults();
             this.setStartupLoadingProgress(42, 'Shuffling the deck…');
+            if (this.startupFastTrackRequested) {
+                this.setStartupLoadingDetail('Slow mode: opening placeholders immediately.');
+                this.cards = this.activeCategory === 'search'
+                    ? this.searchResults.slice(0, this.settings.numCards)
+                    : (this.cardsByCategory[this.activeCategory] ?? []);
+                await this.renderContent();
+                return;
+            }
 
             const allCards = Array.from(new Set(Object.values(this.cardsByCategory).flat()));
             if (this.useSlowConnectionMode) {
@@ -661,6 +669,8 @@ export class LandingPage {
     async renderContent() {
         this.setStartupLoadingProgress(100, 'Ready!');
         const container = this.dom;
+        container?.querySelector('.stlp--wrapper')?.remove();
+        container?.querySelector('.stlp--menu')?.remove();
         const wrap = document.createElement('div'); {
             wrap.classList.add('stlp--wrapper');
             if (this.settings.highlightFavorites) {
