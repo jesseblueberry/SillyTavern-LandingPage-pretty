@@ -628,6 +628,19 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
 .stlp--container .stlp--wrapper .stlp--cards > .stlp--cardWrap > .stlp--card > .stlp--avatar > .stlp--avatarImg:last-child {
   margin-right: 0 !important;
 }
+.stlp--container .stlp--wrapper .stlp--cards > .stlp--cardWrap > .stlp--card > .stlp--avatar > .stlp--avatarPlaceholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--SmartThemeBorderColor);
+  background: linear-gradient(145deg, color-mix(in oklab, var(--SmartThemeQuoteColor), transparent 50%), transparent);
+  display: grid;
+  place-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7em;
+  opacity: 0.7;
+}
 .stlp--container .stlp--wrapper .stlp--cards > .stlp--cardWrap:hover > .stlp--mes {
   opacity: 1;
 }

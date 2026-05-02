@@ -50,10 +50,10 @@ export class LandingPage {
     /**@type {HTMLElement}*/ startupLoadingLabelEl;
     /**@type {HTMLElement}*/ startupLoadingDetailEl;
     /**@type {HTMLElement}*/ startupLoadingBarEl;
-    /**@type {HTMLElement}*/ startupSkipThumbsButtonEl;
+    /**@type {HTMLElement}*/ startupSlowModeButtonEl;
     /**@type {number}*/ startupLoadingProgress = 0;
     /**@type {number|null}*/ startupLoadingTimer = null;
-    /**@type {boolean}*/ skipThumbnailLoading = false;
+    /**@type {boolean}*/ useSlowConnectionMode = false;
 
 
 
@@ -526,18 +526,18 @@ export class LandingPage {
         const els = [];
         for (let i = 0; i < total; i++) {
             const card = this.cards[i];
-            if (!this.skipThumbnailLoading) {
-                this.setStartupLoadingDetail(`Loading thumbnail ${i + 1}/${total}: ${card.name}`);
+            if (!this.useSlowConnectionMode) {
+                this.setStartupLoadingDetail(`Loading thumbnails ${i + 1}/${total}: ${card.name}`);
             }
-            const settings = this.skipThumbnailLoading
-                ? { ...this.settings, showExpression:false }
+            const settings = this.useSlowConnectionMode
+                ? { ...this.settings, showExpression:false, loadAvatars:false }
                 : this.settings;
             const el = await card.render(settings);
             els.push(el);
         }
         els.forEach(it=>root.append(it));
-        if (this.skipThumbnailLoading) {
-            this.setStartupLoadingDetail('Skipped expression thumbnails to speed up loading on slower connections.');
+        if (this.useSlowConnectionMode) {
+            this.setStartupLoadingDetail('Slow connection mode is active: cards are text-first, avatars are skipped.');
         }
     }
 
@@ -826,25 +826,25 @@ export class LandingPage {
                 }
                 loading.append(progress);
             }
-            const skipThumbsButton = document.createElement('button'); {
-                this.startupSkipThumbsButtonEl = skipThumbsButton;
-                skipThumbsButton.type = 'button';
-                skipThumbsButton.classList.add('stlp--startupSkipThumbs');
-                skipThumbsButton.textContent = 'Skip loading thumbnails';
-                skipThumbsButton.addEventListener('click', ()=>{
-                    this.skipThumbnailLoading = true;
-                    skipThumbsButton.disabled = true;
-                    skipThumbsButton.textContent = 'Thumbnails will be skipped';
-                    this.setStartupLoadingDetail('Will skip expression thumbnails and use a faster fallback.');
+            const slowModeButton = document.createElement('button'); {
+                this.startupSlowModeButtonEl = slowModeButton;
+                slowModeButton.type = 'button';
+                slowModeButton.classList.add('stlp--startupSkipThumbs');
+                slowModeButton.textContent = 'Use Slow Connection Mode';
+                slowModeButton.addEventListener('click', ()=>{
+                    this.useSlowConnectionMode = true;
+                    slowModeButton.disabled = true;
+                    slowModeButton.textContent = 'Slow Connection Mode enabled';
+                    this.setStartupLoadingDetail('Will skip card avatars and load a text-first grid for faster startup.');
                 });
-                loading.append(skipThumbsButton);
+                loading.append(slowModeButton);
             }
             this.dom.append(loading);
         }
-        this.skipThumbnailLoading = false;
-        if (this.startupSkipThumbsButtonEl) {
-            this.startupSkipThumbsButtonEl.disabled = false;
-            this.startupSkipThumbsButtonEl.textContent = 'Skip loading thumbnails';
+        this.useSlowConnectionMode = false;
+        if (this.startupSlowModeButtonEl) {
+            this.startupSlowModeButtonEl.disabled = false;
+            this.startupSlowModeButtonEl.textContent = 'Use Slow Connection Mode';
         }
         this.startupLoadingProgress = 5;
         this.setStartupLoadingProgress(5, 'Starting landing page…');
@@ -883,7 +883,7 @@ export class LandingPage {
                 this.startupLoadingLabelEl = null;
                 this.startupLoadingDetailEl = null;
                 this.startupLoadingBarEl = null;
-                this.startupSkipThumbsButtonEl = null;
+                this.startupSlowModeButtonEl = null;
             }, 220);
             return;
         }
@@ -892,7 +892,7 @@ export class LandingPage {
         this.startupLoadingLabelEl = null;
         this.startupLoadingDetailEl = null;
         this.startupLoadingBarEl = null;
-        this.startupSkipThumbsButtonEl = null;
+        this.startupSlowModeButtonEl = null;
     }
 
 

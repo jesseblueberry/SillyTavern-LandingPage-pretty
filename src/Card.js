@@ -192,7 +192,13 @@ export class Card {
                 const ava = document.createElement('div'); {
                     this.domAvatar = ava;
                     ava.classList.add('stlp--avatar');
-                    if (settings.showExpression) {
+                    if (settings.loadAvatars === false) {
+                        const placeholder = document.createElement('div'); {
+                            placeholder.classList.add('stlp--avatarPlaceholder');
+                            placeholder.textContent = this.isGroup ? 'Group' : 'Character';
+                        }
+                        ava.append(placeholder);
+                    } else if (settings.showExpression) {
                         await Promise.all(this.getLastMembers(settings.numAvatars).map(async(mem)=>{
                             const memImg = await mem.loadExpression(settings.expression, this.chatMetadata?.triggerCards?.costumes?.[mem.name]);
                             const img = document.createElement('img'); {
