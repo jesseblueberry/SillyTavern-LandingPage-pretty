@@ -86,20 +86,29 @@ export class Card {
         this.isLoaded = false;
         await this.load();
     }
-    async load() {
+    async load({ signal } = {}) {
         if (this.isLoaded) return;
-        const response = await fetch(`${this.chatEndpoint}/get`, {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify(this.getChatBody),
-            cache: 'no-cache',
-        });
+        let response;
+        try {
+            response = await fetch(`${this.chatEndpoint}/get`, {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify(this.getChatBody),
+                cache: 'no-cache',
+                signal,
+            });
+        } catch (err) {
+            if (signal?.aborted) return this;
+            throw err;
+        }
         if (response.ok) {
             let mesList = await response.json() ?? [];
+            if (signal?.aborted) return this;
             if (!Array.isArray(mesList)) mesList = [];
             this.updateLastMembers(mesList);
             this.lastMessage = mesList.slice(-1)[0];
             this.chatMetadata = this.isGroup ? groups.find(it=>it.name == this.name).chat_metadata : mesList[0]?.['chat_metadata'] ?? {};
+            this.isLoaded = true;
         }
         return this;
     }

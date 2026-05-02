@@ -54,6 +54,12 @@ export class LandingPage {
     /**@type {number}*/ startupLoadingProgress = 0;
     /**@type {number|null}*/ startupLoadingTimer = null;
     /**@type {boolean}*/ useSlowConnectionMode = false;
+    /**@type {boolean}*/ startupFastTrackRequested = false;
+    /**@type {Promise<string>|null}*/ startupFastTrackPromise = null;
+    /**@type {Function|null}*/ startupFastTrackResolver = null;
+    /**@type {AbortController|null}*/ startupAbortController = null;
+    /**@type {AbortController|null}*/ backgroundAbortController = null;
+    /**@type {AbortController|null}*/ backgroundPreloadAbortController = null;
 
 
 
@@ -139,28 +145,36 @@ export class LandingPage {
             this.availableTags = this.getAvailableTags(this.cardsByCategory.search);
             this.updateSearchResults();
             this.setStartupLoadingProgress(42, 'Shuffling the deck…');
-            if (this.startupFastTrackRequested) {
-                this.setStartupLoadingDetail('Slow mode: opening placeholders immediately.');
-                this.cards = this.activeCategory === 'search'
-                    ? this.searchResults.slice(0, this.settings.numCards)
-                    : (this.cardsByCategory[this.activeCategory] ?? []);
-                await this.renderContent();
-                return;
-            }
 
             const allCards = Array.from(new Set(Object.values(this.cardsByCategory).flat()));
-            if (this.useSlowConnectionMode) {
-                Promise.allSettled(allCards.map(card=>card.load())).then(()=>{
-                    log('LandingPage background card.load completed (slow mode)');
-                });
-                this.setStartupLoadingDetail('Slow mode: skipping chat preloading and opening text grid now.');
-            } else {
-                await Promise.all(allCards.map(card=>card.load()));
-            }
-            this.setStartupLoadingProgress(82, 'Dealing your hand…');
             this.cards = this.activeCategory === 'search'
                 ? this.searchResults.slice(0, this.settings.numCards)
                 : (this.cardsByCategory[this.activeCategory] ?? []);
+            if (this.useSlowConnectionMode || this.startupFastTrackRequested) {
+                this.setStartupLoadingDetail('Slow mode: skipping chat preloading and opening text grid now.');
+            } else {
+                const controller = new AbortController();
+                this.startupAbortController = controller;
+                const cardLoadPromise = Promise.all(allCards.map(card=>card.load({ signal:controller.signal })))
+                    .then(()=>'loaded')
+                    .catch(err=>{
+                        if (controller.signal.aborted) return 'slow-mode';
+                        throw err;
+                    });
+                const loadResult = await Promise.race([
+                    cardLoadPromise,
+                    this.getStartupFastTrackPromise(),
+                ]);
+                if (this.startupAbortController === controller) {
+                    this.startupAbortController = null;
+                }
+                if (loadResult === 'slow-mode' || this.useSlowConnectionMode || this.startupFastTrackRequested) {
+                    controller.abort();
+                    this.setStartupLoadingDetail('Slow mode: cancelled chat preloading and opening text grid now.');
+                } else {
+                    this.setStartupLoadingProgress(82, 'Dealing your hand…');
+                }
+            }
         } else {
             this.cards = [];
             this.cardEntries = new Map();
@@ -193,13 +207,31 @@ export class LandingPage {
         log('LandingPage.updateBgresultList COMPLETED');
     }
 
-    async preloadBackgrounds() {
+    async preloadBackgrounds(signal = null) {
         log('LandingPage.preloadBackgrounds');
-        await Promise.all(this.settings.bgList.map(async(bg)=>this.preloadMedia(bg.url)));
+        if (this.useSlowConnectionMode) {
+            log('LandingPage.preloadBackgrounds ABORTED slow mode');
+            return;
+        }
+        let controller = null;
+        if (!signal) {
+            controller = new AbortController();
+            this.backgroundPreloadAbortController?.abort();
+            this.backgroundPreloadAbortController = controller;
+            signal = controller.signal;
+        }
+        await Promise.all(this.settings.bgList.map(async(bg)=>this.preloadMedia(bg.url, false, signal)));
+        if (this.backgroundPreloadAbortController === controller) {
+            this.backgroundPreloadAbortController = null;
+        }
         log('LandingPage.preloadBackgrounds COMPLETED');
     }
-    async preloadMedia(url, intro = false) {
+    async preloadMedia(url, intro = false, signal = null) {
         log('LandingPage.preloadMedia', intro ? 'intro' : '', url);
+        if (this.useSlowConnectionMode || signal?.aborted) {
+            log('LandingPage.preloadMedia ABORTED slow mode', intro ? 'intro' : '', url);
+            return;
+        }
         if (this.videoCache[url]) return;
         const baseUrl = url;
         try {
@@ -208,6 +240,7 @@ export class LandingPage {
                 log('video check not cached', intro ? 'intro' : '', baseUrl);
                 const resp = await fetch(url, {
                     method: 'HEAD',
+                    signal,
                 });
                 this.videoUrlCache[baseUrl] = resp.ok;
                 if (!resp.ok) {
@@ -216,12 +249,14 @@ export class LandingPage {
                 }
                 log('video check done', intro ? 'intro' : '', baseUrl);
             }
-            const media = await fetch(url);
+            if (this.useSlowConnectionMode || signal?.aborted) return;
+            const media = await fetch(url, { signal });
             const blob = await media.blob();
+            if (this.useSlowConnectionMode || signal?.aborted) return;
             this.videoCache[baseUrl] = URL.createObjectURL(blob);
             if (!intro && /\.mp4$/i.test(baseUrl)) {
                 const baseUrlIntro = baseUrl.replace(/(\.[^.]+)$/, '-Intro$1');
-                this.preloadMedia(baseUrlIntro, true);
+                this.preloadMedia(baseUrlIntro, true, signal);
             }
         } catch {
             return;
@@ -229,13 +264,35 @@ export class LandingPage {
         log('LandingPage.preloadMedia COMPLETED', intro ? 'intro' : '', baseUrl);
     }
 
+    async fetchUnlessAborted(url, options = {}) {
+        try {
+            return await fetch(url, options);
+        } catch (err) {
+            if (options.signal?.aborted || this.useSlowConnectionMode) return null;
+            throw err;
+        }
+    }
+
 
     async updateBackground() {
         if (!this.dom) return;
         if (this.isStartingVideo) return;
         log('LandingPage.updateBackground');
+        if (this.useSlowConnectionMode) {
+            this.clearBackgroundMedia();
+            log('LandingPage.updateBackground ABORTED slow mode');
+            return;
+        }
         this.isStartingVideo = true;
+        const controller = new AbortController();
+        this.backgroundAbortController?.abort();
+        this.backgroundAbortController = controller;
+        const signal = controller.signal;
         await this.bgResultUpdatePromise ?? Promise.resolve();
+        if (this.useSlowConnectionMode || signal.aborted) {
+            this.isStartingVideo = false;
+            return;
+        }
         const idx = this.bgResultList.indexOf(true);
         this.updateBgResultList();
         if (idx == -1) {
@@ -254,9 +311,14 @@ export class LandingPage {
                 const urlIntro = `${baseUrlIntro}?t=${this.cacheBuster}`;
                 if (!this.videoUrlCache[baseUrl]) {
                     log('video check not cached');
-                    const resp = await fetch(url, {
+                    const resp = await this.fetchUnlessAborted(url, {
                         method: 'HEAD',
+                        signal,
                     });
+                    if (!resp) {
+                        this.isStartingVideo = false;
+                        return;
+                    }
                     this.videoUrlCache[baseUrl] = resp.ok;
                     if (!resp.ok) {
                         this.video.src = '';
@@ -271,9 +333,14 @@ export class LandingPage {
                 this.dom.style.backgroundImage = '';
                 if (this.introUrlCache[baseUrlIntro] === undefined) {
                     log('intro check not cached');
-                    const respIntro = await fetch(urlIntro, {
+                    const respIntro = await this.fetchUnlessAborted(urlIntro, {
                         method: 'HEAD',
+                        signal,
                     });
+                    if (!respIntro) {
+                        this.isStartingVideo = false;
+                        return;
+                    }
                     this.introUrlCache[baseUrlIntro] = respIntro.ok;
                     log('intro check done');
                 }
@@ -290,6 +357,11 @@ export class LandingPage {
                     }
                     await new Promise(async(resolve)=>{
                         log('  play intro');
+                        const abortResolver = ()=>{
+                            signal.removeEventListener('abort', abortResolver);
+                            resolve();
+                        };
+                        signal.addEventListener('abort', abortResolver, { once:true });
                         // this.intro.src = this.videoCache[baseUrlIntro] ?? urlIntro;
                         if (this.videoCache[baseUrlIntro]) {
                             log('intro from blob');
@@ -299,7 +371,11 @@ export class LandingPage {
                             missingBlob = true;
                             this.intro.src = urlIntro;
                         }
-                        while (!appReady) await delay(100);
+                        while (!appReady) {
+                            if (this.useSlowConnectionMode || signal.aborted) return;
+                            await delay(100);
+                        }
+                        if (this.useSlowConnectionMode || signal.aborted) return;
                         this.intro.play();
                         const resolver = ()=>{
                             this.intro.removeEventListener('ended', resolve);
@@ -309,6 +385,11 @@ export class LandingPage {
                         this.intro.addEventListener('ended', resolver, { once:true });
                         this.intro.addEventListener('error', resolver, { once:true });
                     });
+                    if (this.useSlowConnectionMode || signal.aborted) {
+                        this.clearBackgroundMedia();
+                        this.isStartingVideo = false;
+                        return;
+                    }
                     log('  play video');
                     this.video.play();
                     this.video.style.opacity = '1';
@@ -345,8 +426,53 @@ export class LandingPage {
             this.video.src = '';
             this.dom.style.backgroundImage = '';
         }
+        if (this.backgroundAbortController === controller) {
+            this.backgroundAbortController = null;
+        }
         this.isStartingVideo = false;
         log('LandingPage.updateBackground COMPLETED');
+    }
+
+    clearBackgroundMedia() {
+        if (this.video) {
+            this.video.pause();
+            this.video.src = '';
+            this.video.style.opacity = '';
+        }
+        if (this.intro) {
+            this.intro.pause();
+            this.intro.src = '';
+            this.intro.style.opacity = '';
+        }
+        if (this.dom) {
+            this.dom.style.backgroundImage = '';
+        }
+    }
+
+    getStartupFastTrackPromise() {
+        if (!this.startupFastTrackPromise) {
+            this.startupFastTrackPromise = new Promise(resolve=>{
+                this.startupFastTrackResolver = resolve;
+            });
+        }
+        return this.startupFastTrackPromise;
+    }
+
+    requestStartupFastTrack() {
+        this.useSlowConnectionMode = true;
+        this.startupFastTrackRequested = true;
+        this.startupAbortController?.abort();
+        this.backgroundAbortController?.abort();
+        this.backgroundPreloadAbortController?.abort();
+        this.clearBackgroundMedia();
+        this.setStartupLoadingProgress(Math.max(this.startupLoadingProgress, 86), 'Opening slow mode…');
+        this.setStartupLoadingDetail('Slow mode: cancelling heavy preloads and opening text-only cards.');
+        if (this.startupSlowModeButtonEl) {
+            this.startupSlowModeButtonEl.disabled = true;
+            this.startupSlowModeButtonEl.textContent = 'Slow Connection Mode enabled';
+        }
+        this.startupFastTrackResolver?.('slow-mode');
+        this.startupFastTrackResolver = null;
     }
 
 
@@ -547,7 +673,17 @@ export class LandingPage {
             const settings = this.useSlowConnectionMode
                 ? { ...this.settings, showExpression:false, loadAvatars:false }
                 : this.settings;
-            const el = await card.render(settings);
+            const el = this.useSlowConnectionMode
+                ? await card.render(settings)
+                : await Promise.race([
+                    card.render(settings),
+                    this.getStartupFastTrackPromise(),
+                ]);
+            if (el === 'slow-mode' || this.useSlowConnectionMode) {
+                root.innerHTML = '';
+                await this.renderCardsForCategory(root, category);
+                return;
+            }
             els.push(el);
         }
         els.forEach(it=>root.append(it));
@@ -849,16 +985,16 @@ export class LandingPage {
                 slowModeButton.classList.add('stlp--startupSkipThumbs');
                 slowModeButton.textContent = 'Use Slow Connection Mode';
                 slowModeButton.addEventListener('click', ()=>{
-                    this.useSlowConnectionMode = true;
-                    slowModeButton.disabled = true;
-                    slowModeButton.textContent = 'Slow Connection Mode enabled';
-                    this.setStartupLoadingDetail('Will skip card avatars and load a text-first grid for faster startup.');
+                    this.requestStartupFastTrack();
                 });
                 loading.append(slowModeButton);
             }
             this.dom.append(loading);
         }
         this.useSlowConnectionMode = false;
+        this.startupFastTrackRequested = false;
+        this.startupFastTrackPromise = null;
+        this.startupFastTrackResolver = null;
         if (this.startupSlowModeButtonEl) {
             this.startupSlowModeButtonEl.disabled = false;
             this.startupSlowModeButtonEl.textContent = 'Use Slow Connection Mode';
