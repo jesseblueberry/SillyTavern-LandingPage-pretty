@@ -48,9 +48,12 @@ export class LandingPage {
     /**@type {import('./FizzPopCrackle/FPC.js').FPC}*/ fpc;
     /**@type {HTMLElement}*/ startupLoadingEl;
     /**@type {HTMLElement}*/ startupLoadingLabelEl;
+    /**@type {HTMLElement}*/ startupLoadingDetailEl;
     /**@type {HTMLElement}*/ startupLoadingBarEl;
+    /**@type {HTMLElement}*/ startupSkipThumbsButtonEl;
     /**@type {number}*/ startupLoadingProgress = 0;
     /**@type {number|null}*/ startupLoadingTimer = null;
+    /**@type {boolean}*/ skipThumbnailLoading = false;
 
 
 
@@ -519,8 +522,23 @@ export class LandingPage {
         this.cards = category === 'search'
             ? this.searchResults.slice(0, this.settings.numCards)
             : (this.cardsByCategory[category] ?? []);
-        const els = await Promise.all(this.cards.map(async(card)=>await card.render(this.settings)));
+        const total = this.cards.length;
+        const els = [];
+        for (let i = 0; i < total; i++) {
+            const card = this.cards[i];
+            if (!this.skipThumbnailLoading) {
+                this.setStartupLoadingDetail(`Loading thumbnail ${i + 1}/${total}: ${card.name}`);
+            }
+            const settings = this.skipThumbnailLoading
+                ? { ...this.settings, showExpression:false }
+                : this.settings;
+            const el = await card.render(settings);
+            els.push(el);
+        }
         els.forEach(it=>root.append(it));
+        if (this.skipThumbnailLoading) {
+            this.setStartupLoadingDetail('Skipped expression thumbnails to speed up loading on slower connections.');
+        }
     }
 
     getAvailableTags(cards) {
@@ -793,6 +811,12 @@ export class LandingPage {
                 label.textContent = 'Preparing your landing page…';
                 loading.append(label);
             }
+            const detail = document.createElement('div'); {
+                this.startupLoadingDetailEl = detail;
+                detail.classList.add('stlp--startupLoadingDetail');
+                detail.textContent = 'Checking connection and queueing assets…';
+                loading.append(detail);
+            }
             const progress = document.createElement('div'); {
                 progress.classList.add('stlp--startupLoadingProgress');
                 const bar = document.createElement('div'); {
@@ -802,10 +826,29 @@ export class LandingPage {
                 }
                 loading.append(progress);
             }
+            const skipThumbsButton = document.createElement('button'); {
+                this.startupSkipThumbsButtonEl = skipThumbsButton;
+                skipThumbsButton.type = 'button';
+                skipThumbsButton.classList.add('stlp--startupSkipThumbs');
+                skipThumbsButton.textContent = 'Skip loading thumbnails';
+                skipThumbsButton.addEventListener('click', ()=>{
+                    this.skipThumbnailLoading = true;
+                    skipThumbsButton.disabled = true;
+                    skipThumbsButton.textContent = 'Thumbnails will be skipped';
+                    this.setStartupLoadingDetail('Will skip expression thumbnails and use a faster fallback.');
+                });
+                loading.append(skipThumbsButton);
+            }
             this.dom.append(loading);
+        }
+        this.skipThumbnailLoading = false;
+        if (this.startupSkipThumbsButtonEl) {
+            this.startupSkipThumbsButtonEl.disabled = false;
+            this.startupSkipThumbsButtonEl.textContent = 'Skip loading thumbnails';
         }
         this.startupLoadingProgress = 5;
         this.setStartupLoadingProgress(5, 'Starting landing page…');
+        this.setStartupLoadingDetail('Checking connection and queueing assets…');
         if (this.startupLoadingTimer !== null) clearInterval(this.startupLoadingTimer);
         this.startupLoadingTimer = setInterval(()=>{
             if (this.startupLoadingProgress >= 92) return;
@@ -821,6 +864,11 @@ export class LandingPage {
             this.startupLoadingLabelEl.textContent = label;
         }
     }
+    setStartupLoadingDetail(detail) {
+        if (this.startupLoadingDetailEl) {
+            this.startupLoadingDetailEl.textContent = detail;
+        }
+    }
     teardownStartupLoading(isReady = false) {
         if (this.startupLoadingTimer !== null) {
             clearInterval(this.startupLoadingTimer);
@@ -833,14 +881,18 @@ export class LandingPage {
                 this.startupLoadingEl?.remove();
                 this.startupLoadingEl = null;
                 this.startupLoadingLabelEl = null;
+                this.startupLoadingDetailEl = null;
                 this.startupLoadingBarEl = null;
+                this.startupSkipThumbsButtonEl = null;
             }, 220);
             return;
         }
         this.startupLoadingEl.remove();
         this.startupLoadingEl = null;
         this.startupLoadingLabelEl = null;
+        this.startupLoadingDetailEl = null;
         this.startupLoadingBarEl = null;
+        this.startupSkipThumbsButtonEl = null;
     }
 
 
