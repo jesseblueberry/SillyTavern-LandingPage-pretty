@@ -170,6 +170,12 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
   text-shadow: 0 0 12px rgba(0 0 0 / 0.5);
   opacity: 0.95;
 }
+.stlp--container .stlp--startupLoading .stlp--startupLoadingDetail {
+  font-size: 12px;
+  opacity: 0.82;
+  max-width: min(600px, 85vw);
+  text-align: center;
+}
 .stlp--container .stlp--startupLoading .stlp--startupLoadingProgress {
   margin-top: 8px;
   width: min(420px, 70vw);
@@ -185,6 +191,25 @@ html > body.stlp--hideTopBar:has(.stlp--container) > #top-bar:hover + #top-setti
   border-radius: inherit;
   background: linear-gradient(90deg, rgba(109 213 250 / 0.8), rgba(41 128 185 / 0.95));
   transition: width 180ms ease-out;
+}
+.stlp--container .stlp--startupLoading .stlp--startupSkipThumbs {
+  margin-top: 10px;
+  border: 1px solid rgba(255 255 255 / 0.45);
+  background: rgba(20 20 20 / 0.35);
+  color: rgb(245 245 245 / 0.95);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: 150ms ease;
+}
+.stlp--container .stlp--startupLoading .stlp--startupSkipThumbs:hover {
+  background: rgba(40 40 40 / 0.55);
+  border-color: rgba(255 255 255 / 0.65);
+}
+.stlp--container .stlp--startupLoading .stlp--startupSkipThumbs:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 .stlp--container .stlp--menu {
   list-style: none;
