@@ -141,7 +141,14 @@ export class LandingPage {
             this.setStartupLoadingProgress(42, 'Shuffling the deck…');
 
             const allCards = Array.from(new Set(Object.values(this.cardsByCategory).flat()));
-            await Promise.all(allCards.map(card=>card.load()));
+            if (this.useSlowConnectionMode) {
+                Promise.allSettled(allCards.map(card=>card.load())).then(()=>{
+                    log('LandingPage background card.load completed (slow mode)');
+                });
+                this.setStartupLoadingDetail('Slow mode: skipping chat preloading and opening text grid now.');
+            } else {
+                await Promise.all(allCards.map(card=>card.load()));
+            }
             this.setStartupLoadingProgress(82, 'Dealing your hand…');
             this.cards = this.activeCategory === 'search'
                 ? this.searchResults.slice(0, this.settings.numCards)
